@@ -1,21 +1,55 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Baki Khata (বাকি খাতা) 📒
 
-# Run and deploy your AI Studio app
+Baki Khata is a modern, offline-first Android application designed for small business owners and shopkeepers to easily manage their daily customer transactions, credits (baki), and debits. Built entirely with **Kotlin** and **Jetpack Compose**.
 
-This contains everything you need to run your app locally.
+## ✨ Features
 
-View your app in AI Studio: https://ai.studio/apps/8d8c0567-5b60-48b0-9a3e-1c4754b719ef
+* **Dashboard & Analytics:** Get a quick overview of your total credits, debits, and balance.
+* **Customer Management:** Add and manage customer profiles easily.
+* **Transaction Ledger:** Record cash in (payments) and cash out (credits) transactions for each customer.
+* **Bluetooth Thermal Printing:** Connect to a Bluetooth thermal printer and print transaction receipts instantly.
+* **PDF Reports & Invoices:** Generate, view, and share transaction receipts and reports as PDF files.
+* **App Security:** Built-in App Lock system (PIN/Password) to keep your business data secure.
+* **Shop & Owner Profile:** Personalize your receipts with your own shop name, address, and logo.
+* **Offline First:** All data is securely saved locally on your device using Room Database.
+* **Modern UI/UX:** A clean, responsive, and beautiful user interface with Dark/Light theme support.
 
-## Run Locally
+## 🛠️ Tech Stack
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+* **Language:** [Kotlin](https://kotlinlang.org/)
+* **UI Toolkit:** [Jetpack Compose](https://developer.android.com/jetpack/compose)
+* **Architecture:** MVVM (Model-View-ViewModel)
+* **Local Database:** [Room](https://developer.android.com/training/data-storage/room)
+* **Asynchronous Programming:** Coroutines & Flow
+* **Navigation:** Jetpack Navigation Compose
+* **PDF Generation:** Android PDFDocument API
+* **Printing:** EscPosFormatter for Bluetooth Thermal Printers
 
+## 📱 Screenshots
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
+*(Screenshots coming soon... You can add screenshots of your app here)*
+
+## 🚀 Getting Started
+
+### Prerequisites
+* [Android Studio](https://developer.android.com/studio) (Koala or newer recommended)
+* JDK 17+
+* Minimum SDK: API 24 (Android 7.0)
+
+### Installation
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/enamulzishan/Baki_Khata.git
+   ```
+2. Open the project in **Android Studio**.
+3. Let Gradle sync and download all dependencies.
+4. Run the app on an emulator or a physical Android device.
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome! 
+Feel free to check [issues page](https://github.com/enamulzishan/Baki_Khata/issues).
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
