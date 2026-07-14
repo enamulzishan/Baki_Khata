@@ -13,6 +13,15 @@ import androidx.compose.foundation.lazy.items
 
 import androidx.compose.foundation.clickable
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Message
 import android.os.Bundle
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -390,64 +399,126 @@ class MainActivity : FragmentActivity() {
 
 
 @Composable
-fun CustomerRowWithBadge(data: com.example.domain.CustomerProfileData, onClick: (String) -> Unit) {
+fun CustomerRowWithBadge(data: com.example.domain.CustomerProfileData, overdueThreshold: Int, onClick: (String) -> Unit) {
+    val context = LocalContext.current
+    val firstLetter = data.customer.name.take(1).uppercase()
+    val colors = listOf(Color(0xFFE57373), Color(0xFF81C784), Color(0xFF64B5F6), Color(0xFFFFB74D), Color(0xFF9575CD), Color(0xFF4DB6AC))
+    val avatarColor = remember(data.customer.id) { colors[Math.abs(data.customer.name.hashCode()) % colors.size] }
+    
+    val daysSinceLastTx = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - data.customer.lastTransactionDate.toDate().time)
+    val dueColor = when {
+        data.customer.totalDue == 0L -> GreenPrimary
+        daysSinceLastTx <= overdueThreshold -> Color(0xFFFFA000) // Amber
+        else -> RedNegative // Red
+    }
+    val relativeTime = com.example.utils.TimeUtils.getRelativeTime(data.customer.lastTransactionDate.toDate().time)
+
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onClick(data.customer.id) },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
             modifier = Modifier.padding(16.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(data.customer.name, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Score: ${data.profile.score}", fontSize = 12.sp, color = TextSecondary)
-                    Text("•", fontSize = 12.sp, color = TextSecondary)
-                    Text(data.profile.riskLevel.label, fontSize = 12.sp, color = Color(data.profile.riskLevel.color))
-                    Text(data.profile.riskLevel.stars, fontSize = 12.sp, color = Color(data.profile.riskLevel.color))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Box(
+                    modifier = Modifier.size(48.dp).clip(CircleShape).background(avatarColor),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(firstLetter, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    if (data.customer.syncState != "SYNCED") {
+                        Icon(
+                            Icons.Default.Sync,
+                            contentDescription = "Pending Sync",
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp).align(Alignment.BottomEnd).background(Color.Black.copy(alpha = 0.5f), CircleShape).padding(2.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(data.customer.name, fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 16.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("৳${com.example.utils.CurrencyFormatter.format(data.customer.totalDue)}", fontWeight = FontWeight.Bold, color = dueColor)
+                        Text(" • $relativeTime", fontSize = 12.sp, color = TextSecondary)
+                    }
                 }
             }
-            Text("৳${data.customer.totalDue}", fontWeight = FontWeight.Bold, color = if (data.customer.totalDue > 0) RedNegative else GreenPrimary)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IconButton(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${data.customer.phone}"))
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier.size(36.dp).background(BackgroundColor, CircleShape)
+                ) {
+                    Icon(Icons.Default.Phone, contentDescription = "Call", tint = GreenPrimary, modifier = Modifier.size(20.dp))
+                }
+                IconButton(
+                    onClick = {
+                        val message = com.example.utils.MessageUtils.buildReminderMessage(data.customer)
+                        val intent = Intent(Intent.ACTION_SENDTO).apply {
+                            setData(Uri.parse("smsto:${data.customer.phone}"))
+                            putExtra("sms_body", message)
+                        }
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier.size(36.dp).background(BackgroundColor, CircleShape)
+                ) {
+                    Icon(Icons.Default.Message, contentDescription = "Message", tint = GreenPrimary, modifier = Modifier.size(20.dp))
+                }
+            }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CustomerListScreen(viewModel: MainViewModel, modifier: Modifier = Modifier, initialFilter: String? = null, onCustomerClick: (String) -> Unit = {}) {
     val profiles by viewModel.allCustomerProfiles.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val overdueThreshold by viewModel.settingsManager.overdueThresholdDaysFlow.collectAsState(initial = 15)
+    
     var searchQuery by remember { mutableStateOf("") }
+    var currentFilter by remember { mutableStateOf(initialFilter?.replaceFirstChar { it.uppercase() } ?: "All") }
     var sortOption by remember { mutableStateOf("Default") }
     var showSortMenu by remember { mutableStateOf(false) }
-    var currentFilter by remember { mutableStateOf(if (initialFilter == "overdue") "Overdue" else "All") }
-    
-    val filteredProfiles = remember(profiles, searchQuery, currentFilter) {
+
+    val filteredProfiles = remember(profiles, searchQuery, currentFilter, overdueThreshold) {
         val searchFiltered = profiles.filter {
             it.customer.name.contains(searchQuery, ignoreCase = true) ||
             it.customer.phone.contains(searchQuery, ignoreCase = true) ||
             it.customer.customerCode.contains(searchQuery, ignoreCase = true)
         }
-        if (currentFilter == "Overdue") {
-            searchFiltered.filter { it.customer.totalDue > 0 } // basic overdue approximation for list filter
-        } else {
-            searchFiltered
+        val now = System.currentTimeMillis()
+        searchFiltered.filter { data ->
+            when (currentFilter) {
+                "Due" -> data.customer.totalDue > 0
+                "Overdue" -> {
+                    val daysSinceTx = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(now - data.customer.lastTransactionDate.toDate().time)
+                    data.customer.totalDue > 0 && daysSinceTx > overdueThreshold
+                }
+                "Paid off" -> data.customer.totalDue == 0L
+                else -> true
+            }
         }
     }
     
     val sortedProfiles = remember(filteredProfiles, sortOption) {
         when (sortOption) {
-            "Highest Score" -> filteredProfiles.sortedByDescending { it.profile.score }
-            "Lowest Score" -> filteredProfiles.sortedBy { it.profile.score }
-            "Highest Risk" -> filteredProfiles.sortedBy { it.profile.score } // same as lowest score for now
+            "Name (A-Z)" -> filteredProfiles.sortedBy { it.customer.name }
+            "Due (High->Low)" -> filteredProfiles.sortedByDescending { it.customer.totalDue }
+            "Last Tx (Oldest Overdue)" -> filteredProfiles.sortedBy { it.customer.lastTransactionDate.toDate().time }
             else -> filteredProfiles
         }
     }
-    
-    Column(
-        modifier = modifier.fillMaxSize().background(BackgroundColor).padding(16.dp)
-    ) {
+
+    Column(modifier = modifier.fillMaxSize().background(BackgroundColor).padding(horizontal = 16.dp)) {
+        Spacer(modifier = Modifier.height(16.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("কাস্টমার তালিকা", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = GreenPrimary)
             Box {
@@ -455,39 +526,64 @@ fun CustomerListScreen(viewModel: MainViewModel, modifier: Modifier = Modifier, 
                     Icon(Icons.Default.FilterList, contentDescription = "Sort")
                 }
                 DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                    DropdownMenuItem(text = { Text("Filter: All") }, onClick = { currentFilter = "All"; showSortMenu = false })
-                    DropdownMenuItem(text = { Text("Filter: Overdue") }, onClick = { currentFilter = "Overdue"; showSortMenu = false })
-                    HorizontalDivider()
                     DropdownMenuItem(text = { Text("Sort: Default") }, onClick = { sortOption = "Default"; showSortMenu = false })
-                    DropdownMenuItem(text = { Text("Sort: Highest Score") }, onClick = { sortOption = "Highest Score"; showSortMenu = false })
-                    DropdownMenuItem(text = { Text("Sort: Lowest Score") }, onClick = { sortOption = "Lowest Score"; showSortMenu = false })
-                    DropdownMenuItem(text = { Text("Sort: Highest Risk") }, onClick = { sortOption = "Highest Risk"; showSortMenu = false })
+                    DropdownMenuItem(text = { Text("Sort: Name (A-Z)") }, onClick = { sortOption = "Name (A-Z)"; showSortMenu = false })
+                    DropdownMenuItem(text = { Text("Sort: Due (High->Low)") }, onClick = { sortOption = "Due (High->Low)"; showSortMenu = false })
+                    DropdownMenuItem(text = { Text("Sort: Last Tx (Oldest Overdue)") }, onClick = { sortOption = "Last Tx (Oldest Overdue)"; showSortMenu = false })
                 }
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
         
+        Spacer(modifier = Modifier.height(12.dp))
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Search by name, phone or code") },
+            placeholder = { Text("নাম, ফোন বা কোড দিয়ে খুঁজুন") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = GreenPrimary,
                 unfocusedBorderColor = CardBorder
-            )
+            ),
+            singleLine = true
         )
-        Spacer(modifier = Modifier.height(16.dp))
         
-        if (sortedProfiles.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(if (profiles.isEmpty()) "কোনো কাস্টমার নেই" else "No matching customers found", color = TextSecondary)
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("All", "Due", "Overdue", "Paid off").forEach { filter ->
+                FilterChip(
+                    selected = currentFilter == filter,
+                    onClick = { currentFilter = filter },
+                    label = { Text(filter) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = GreenPrimary.copy(alpha = 0.2f),
+                        selectedLabelColor = GreenPrimary
+                    )
+                )
             }
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(items = sortedProfiles, key = { it.customer.id }) { profileData ->
-                    CustomerRowWithBadge(profileData, onClick = { onCustomerClick(profileData.customer.id) })
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.manualSync() },
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (sortedProfiles.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("কোনো কাস্টমার পাওয়া যায়নি", color = TextSecondary, fontSize = 16.sp)
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(items = sortedProfiles, key = { it.customer.id }) { profileData ->
+                        CustomerRowWithBadge(profileData, overdueThreshold, onClick = { onCustomerClick(profileData.customer.id) })
+                    }
                 }
             }
         }

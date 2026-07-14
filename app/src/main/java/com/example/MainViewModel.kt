@@ -58,12 +58,14 @@ class MainViewModel(application: android.app.Application) : androidx.lifecycle.A
         _searchQuery.value = query
     }
 
+    val settingsManager = com.example.settings.SettingsManager(application)
+    
     private val dashboardStatsUseCase by lazy {
         com.example.domain.DashboardStatsUseCase(
             customerDao = com.example.data.local.AppDatabase.getDatabase(application).customerDao(),
             transactionDao = com.example.data.local.AppDatabase.getDatabase(application).transactionDao(),
             reminderDao = com.example.data.local.AppDatabase.getDatabase(application).reminderDao(),
-            settingsManager = com.example.settings.SettingsManager(application)
+            settingsManager = settingsManager
         )
     }
 
@@ -89,7 +91,7 @@ class MainViewModel(application: android.app.Application) : androidx.lifecycle.A
                     customerId = customer.id,
                     customerName = customer.name,
                     method = "SMS",
-                    messageText = "Dear ${customer.name}, you have a due of ${com.example.utils.CurrencyFormatter.format(customer.totalDue)}.",
+                    messageText = com.example.utils.MessageUtils.buildReminderMessage(customer),
                     timestamp = System.currentTimeMillis(),
                     status = "PENDING",
                     syncState = "PENDING_ADD"
@@ -233,6 +235,22 @@ class MainViewModel(application: android.app.Application) : androidx.lifecycle.A
         }
     }
 
+    fun addDue(customer: Customer, amount: Long, notes: String) {
+        viewModelScope.launch {
+            saveTransaction(
+                customer = customer,
+                type = "Credit Sale",
+                saleAmount = amount,
+                paidAmount = 0L,
+                remainingDue = amount,
+                paymentMethod = "",
+                notes = notes,
+                imageUri = null,
+                transactionDate = System.currentTimeMillis()
+            )
+        }
+    }
+
     suspend fun saveTransaction(
         customer: Customer,
         type: String,
@@ -258,8 +276,16 @@ class MainViewModel(application: android.app.Application) : androidx.lifecycle.A
         return CustomerProfileData(cust, profile)
     }
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
     fun manualSync() {
-        repository.manualSync()
-        _lastSyncTime.value = System.currentTimeMillis()
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            repository.manualSync()
+            _lastSyncTime.value = System.currentTimeMillis()
+            delay(1000) // Small delay to show spinner
+            _isRefreshing.value = false
+        }
     }
 }
