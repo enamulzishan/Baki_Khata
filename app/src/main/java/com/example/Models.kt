@@ -16,7 +16,8 @@ data class Customer(
     val totalPaid: Long = 0,
     val createdAt: Timestamp = Timestamp.now(),
     val updatedAt: Timestamp = Timestamp.now(),
-    val lastTransactionDate: Timestamp = Timestamp.now()
+    val lastTransactionDate: Timestamp = Timestamp.now(),
+    val syncState: String = "SYNCED"
 )
 
 @Stable

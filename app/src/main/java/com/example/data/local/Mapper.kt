@@ -7,7 +7,7 @@ import com.google.firebase.Timestamp
 import java.util.Date
 
 object Mapper {
-    fun Customer.toEntity(syncState: String = "SYNCED"): CustomerEntity {
+    fun Customer.toEntity(syncState: String = this.syncState): CustomerEntity {
         return CustomerEntity(
             id = id,
             customerCode = customerCode,
@@ -38,7 +38,8 @@ object Mapper {
             totalPaid = totalPaid,
             createdAt = Timestamp(Date(createdAt)),
             updatedAt = Timestamp(Date(updatedAt)),
-            lastTransactionDate = Timestamp(Date(lastTransactionDate))
+            lastTransactionDate = Timestamp(Date(lastTransactionDate)),
+            syncState = syncState
         )
     }
 
