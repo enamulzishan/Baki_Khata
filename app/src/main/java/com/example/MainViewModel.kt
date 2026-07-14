@@ -51,7 +51,8 @@ class MainViewModel(application: android.app.Application) : androidx.lifecycle.A
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    val debouncedSearchQuery: Flow<String> = _searchQuery.asStateFlow()
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    val debouncedSearchQuery: Flow<String> = _searchQuery.debounce(300)
 
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
@@ -112,8 +113,27 @@ class MainViewModel(application: android.app.Application) : androidx.lifecycle.A
     private val repository = OfflineRepository(application)
     val isOnline = repository.isOnline
 
+    private var dataJob: kotlinx.coroutines.Job? = null
+
+    private val authStateListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+        val userId = firebaseAuth.currentUser?.uid
+        if (userId != null) {
+            fetchData(userId)
+        }
+    }
+
     init {
-        fetchData()
+        _isLoading.value = false
+        // auth.currentUser can still be null here on a cold start, before Firebase
+        // finishes restoring the persisted session. Listening for auth state changes
+        // (instead of checking currentUser once) guarantees fetchData() runs as soon
+        // as the user is actually available, so the dashboard never gets stuck empty.
+        auth.addAuthStateListener(authStateListener)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        auth.removeAuthStateListener(authStateListener)
     }
 
     private suspend fun generateNextCustomerCode(userId: String): String {
@@ -146,39 +166,41 @@ class MainViewModel(application: android.app.Application) : androidx.lifecycle.A
         }
     }
 
-    private fun fetchData() {
-        _isLoading.value = false
-        val userId = auth.currentUser?.uid ?: return
-        
-        viewModelScope.launch {
-            repository.getAllCustomers().collect { list ->
-                _customers.value = list
-                _totalDue.value = list.sumOf { it.totalDue }
-                migrateCustomersIfNeeded(userId, list)
+    private fun fetchData(userId: String) {
+        // Cancel any previous collectors before starting new ones, since the auth
+        // listener can fire more than once (e.g. token refresh, re-login).
+        dataJob?.cancel()
+        dataJob = viewModelScope.launch {
+            launch {
+                repository.getAllCustomers().collect { list ->
+                    _customers.value = list
+                    _totalDue.value = list.sumOf { it.totalDue }
+                    migrateCustomersIfNeeded(userId, list)
+                }
             }
-        }
-        
-        viewModelScope.launch {
-            repository.getAllTransactions().collect { list ->
-                _transactions.value = list
-                
-                val todayMillis = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
-                var currentTodayDue = 0L
-                var currentTodayDeposit = 0L
-                for (t in list) {
-                    if (t.timestamp.toDate().time > todayMillis) {
-                        if (t.type == "DUE") {
-                            currentTodayDue += t.amount
-                        } else {
-                            currentTodayDeposit += t.amount
+
+            launch {
+                repository.getAllTransactions().collect { list ->
+                    _transactions.value = list
+
+                    val todayMillis = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
+                    var currentTodayDue = 0L
+                    var currentTodayDeposit = 0L
+                    for (t in list) {
+                        if (t.timestamp.toDate().time > todayMillis) {
+                            if (t.type == "DUE") {
+                                currentTodayDue += t.amount
+                            } else {
+                                currentTodayDeposit += t.amount
+                            }
                         }
                     }
+                    _todayDue.value = currentTodayDue
+                    _todayDeposit.value = currentTodayDeposit
                 }
-                _todayDue.value = currentTodayDue
-                _todayDeposit.value = currentTodayDeposit
             }
         }
-        
+
         // Initial sync when opening
         repository.manualSync()
         _lastSyncTime.value = System.currentTimeMillis()
@@ -241,5 +263,3 @@ class MainViewModel(application: android.app.Application) : androidx.lifecycle.A
         _lastSyncTime.value = System.currentTimeMillis()
     }
 }
-
-

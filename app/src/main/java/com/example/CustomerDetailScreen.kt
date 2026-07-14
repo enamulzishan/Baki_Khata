@@ -53,6 +53,7 @@ fun CustomerDetailScreen(
     val coroutineScope = rememberCoroutineScope()
     
     var showPaymentSheet by remember { mutableStateOf(false) }
+    var showAddDueSheet by remember { mutableStateOf(false) }
     var deleteTxId by remember { mutableStateOf<String?>(null) }
     var currentTab by remember { mutableStateOf("invoices") }
     
@@ -76,14 +77,25 @@ fun CustomerDetailScreen(
             )
         },
         bottomBar = {
-            Box(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { showAddDueSheet = true },
+                    modifier = Modifier.weight(1f).height(56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = RedNegative),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text("বাকি যোগ করুন\n(Add Due)", fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
                 Button(
                     onClick = { showPaymentSheet = true },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    modifier = Modifier.weight(1f).height(56.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text("কালেকশন করুন (Collect Payment)", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("কালেকশন করুন\n(Collect)", fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
             }
         },
@@ -281,6 +293,22 @@ fun CustomerDetailScreen(
             )
         }
     }
+
+    if (showAddDueSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showAddDueSheet = false },
+            containerColor = Color.White
+        ) {
+            AddDueSheetContent(
+                customer = customer,
+                onDismiss = { showAddDueSheet = false },
+                onAddDue = { amount, notes ->
+                    viewModel.addDue(customer, amount, notes)
+                    showAddDueSheet = false
+                }
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -362,6 +390,69 @@ fun PaymentSheetContent(
             shape = RoundedCornerShape(16.dp)
         ) {
             Text("সংরক্ষণ করুন", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddDueSheetContent(
+    customer: Customer,
+    onDismiss: () -> Unit,
+    onAddDue: (Long, String) -> Unit
+) {
+    var amount by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text("বাকি যোগ করুন (Add Due)", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = RedNegative)
+        Text("বর্তমান বাকি: ৳${customer.totalDue}", fontSize = 16.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+        
+        OutlinedTextField(
+            value = amount,
+            onValueChange = { amount = it },
+            label = { Text("টাকার পরিমাণ *") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = RedNegative, focusedLabelColor = RedNegative),
+            shape = RoundedCornerShape(12.dp)
+        )
+        
+        OutlinedTextField(
+            value = notes,
+            onValueChange = { notes = it },
+            label = { Text("নোট (ঐচ্ছিক)") },
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = RedNegative, focusedLabelColor = RedNegative),
+            shape = RoundedCornerShape(12.dp)
+        )
+        
+        if (error != null) {
+            Text(error!!, color = RedNegative, fontSize = 12.sp)
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = {
+                val amt = amount.toLongOrNull() ?: 0L
+                if (amt <= 0) {
+                    error = "সঠিক টাকার পরিমাণ দিন"
+                } else {
+                    onAddDue(amt, notes)
+                }
+            },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = RedNegative),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text("যোগ করুন", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
